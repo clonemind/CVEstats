@@ -99,11 +99,40 @@ def parse_json_crits(filename, cvss_version):
                                 result['title'] = ""                
     return result
 
-def add_years_between(year_range):
-    splitted_years = year_range.split('-')
+def get_all_cwe_year(year, cwe):
     result = []
-    for i in range(int(splitted_years[0]), int(splitted_years[1]) + 1):
-        result.append(i)
+    cwe_title = None
+    files_to_read = read_files_of_year(year)
+    for file in files_to_read:
+        cve, cwe_description = parse_json_cwe(file, cwe)
+        if cve:
+            result.append(cve)
+        if not cwe_title and cwe_description:
+            cwe_title = cwe_description
+    
+    return result, cwe_title
+    
+def parse_json_cwe(filename, cwe):
+    result = ''
+    f = open(filename)
+    j = json.load(f)
+    if 'problemTypes' in j['containers']['cna']:
+        problems = j['containers']['cna']['problemTypes']
+        for problem in problems:
+            for description in problem['descriptions']:
+                if 'cweId' in description:
+                    if cwe == description['cweId']:
+                        return j['cveMetadata']['cveId'], description['description']
+    return None, None
+
+def parse_year(year):
+    result = []
+    if '-' in year:
+        splitted_years = year.split('-')
+        for i in range(int(splitted_years[0]), int(splitted_years[1]) + 1):
+            result.append(i)
+    else:
+        result.append(str(year))
         
     return result
 
@@ -127,30 +156,30 @@ def plot_data(data):
 
 if __name__ == '__main__':       
     parser = argparse.ArgumentParser(description='Search a specific year of CVEs')
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument('--year', type=int, help='the year you want to process')
-    group.add_argument('--range', help='range of years. example: 2010-2023')
     parser.add_argument('--version', help='version of cvss', choices=['3_1', '3_0', '2_0'], default='3_1',required=False)
-    parser.add_argument('--crit', help='search CVEs with CVSS >=9', action='store_true')
+    group1 = parser.add_mutually_exclusive_group()
+    group1.add_argument('--crit', help='search CVEs with CVSS >=9', action='store_true')
+    group1.add_argument('--cwe', help='Search for CWE categories')
+    parser.add_argument('--year', help='the year you want to process. e.g.: 2022 or 2022-2023', required=True)
     args = parser.parse_args()
     
     result_dict = {}
-    #Calculate Median of one year
-    if args.year:
-        result_dict[args.year] = calc_median_year(args.year, args.version)
+    years = parse_year(args.year)
+    for y in years:
+        result_dict[y] = calc_median_year(y, args.version)
         if args.crit:
-            crits_of_year = get_all_crits_year(args.year, args.version)
+            crits_of_year = get_all_crits_year(y, args.version)
             for crit in crits_of_year:
                 print(crit)
-            print("Year " + str(args.year) + " has " + str(len(crits_of_year)) + " CVEs with CVSS " + args.version + " >= 9.0")
-        
-    #calculate median of every year
-    if args.range:
-        years = add_years_between(args.range)
-        for y in years:
-            result_dict[y] = calc_median_year(y, args.version)
-          
-    print(result_dict)
+            print("Year " + str(y) + " has " + str(len(crits_of_year)) + " CVEs with CVSS " + args.version + " >= 9.0")
+        elif args.cwe:
+            print('searching: ' + args.cwe + " in year " + str(y))
+            cves_relatet_to_cwe, cwe_title = get_all_cwe_year(y, args.cwe)
+            for cve in cves_relatet_to_cwe:
+                print(cve)
+            print(str(len(cves_relatet_to_cwe)) + " vulnerabilities have " + args.cwe + '(' + str(cwe_title) + ')' + " assigned")
+
+    print('Median of CVSS Score: ' + str(result_dict))
 
     #print(parse_json_base_score('cves/2022/35xxx/CVE-2022-35875.json'))
     #plot_data(1)
