@@ -2,6 +2,7 @@ import json
 import os
 import argparse
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 def read_files_of_year(year):
     result = []
@@ -134,30 +135,46 @@ def parse_year(year):
         
     return result
 
-def plot_data(data, cvss_version ):
+def calc_plot_num(data, years):
+    # 1 because cris will always ploted
+    result = 0
+    if 'crit' in data[years[0]]: result += 1
+    if 'cwe' in data[years[0]]:result += 1
+    return result
+
+def plot_data(data, cvss_version):
     keys = data.keys()
     year_list = []
     median_list = []
     crit_list = []
     cwe_list = []
-    figure, axis = plt.subplots(1, 2)
     
+    # generate a list with all years that the user wants
     for years in keys:
         year_list.append(years)
+    # calculate a list to plot median
     for year in year_list:
         if data[year]['median'] is None:
             median_list.append(0)
         else:
             median_list.append(data[year]['median'])
+    # calculate the number of plots which have to be generated
+    num_plots = calc_plot_num(data, year_list)
+    figure, axis = plt.subplots(1, num_plots + 1)
+    year = year_list[0] # assign any year to this variable, to check later in the code for crit and cwe keyword
+    
     if 'crit' in data[year]:
         for year in year_list:
             if data[year]['crit'] is not None:
                 crit_list.append(data[year]['crit']['num'])
         
         # Plot crits       
-        axis[1].set_title("Critical vulns from " + str(year_list[0]) + " to " + str(year_list[-1]))
-        axis[1].plot(data.keys(), crit_list)
-        axis[1].set(xlabel='years', ylabel='num crits')
+        axis[num_plots].set_title("Critical vulns from " + str(year_list[0]) + " to " + str(year_list[-1]))
+        axis[num_plots].plot(keys, crit_list)
+        axis[num_plots].set(xlabel='years', ylabel='num crits')
+        axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
+        axis[num_plots].set_ylim(bottom=0) # y min is always 0
+        num_plots -= 1
     
     if 'cwe' in data[year]:
         for year in year_list:
@@ -165,14 +182,19 @@ def plot_data(data, cvss_version ):
                 cwe_list.append(data[year]['cwe']['num'])    
         
         # Plot CWE      
-        axis[1].set_title(data[year]['cwe']['title'] + " from " + str(year_list[0]) + " to " + str(year_list[-1]))
-        axis[1].plot(data.keys(), cwe_list)
-        axis[1].set(xlabel='years', ylabel='num assigned CWEs')
-        
+        axis[num_plots].set_title(data[year]['cwe']['title'] + " from " + str(year_list[0]) + " to " + str(year_list[-1]))
+        axis[num_plots].plot(keys, cwe_list)
+        axis[num_plots].set(xlabel='years', ylabel='num assigned CWEs')
+        axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
+        axis[num_plots].set_ylim(bottom=0) # y min is always 0
+        num_plots -= 1
+            
     # Plot median        
-    axis[0].set_title('CVSS ' + cvss_version + " from " + str(year_list[0]) + " to " + str(year_list[-1]))
-    axis[0].bar(data.keys(), median_list)
-    axis[0].set(xlabel='years', ylabel='CVSS')
+    axis[num_plots].set_title('CVSS ' + cvss_version + " >= 9,0 from " + str(year_list[0]) + " to " + str(year_list[-1]))
+    axis[num_plots].bar(keys, median_list)
+    axis[num_plots].set(xlabel='years', ylabel='CVSS')
+    axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
+    axis[num_plots].set_ylim(bottom=0) # y min is always 0
 
     plt.show()
 
@@ -189,7 +211,7 @@ def gui(args):
                     print(crit)
             print(str(y) + ": " + str(len(crits_of_year)) + " CVEs with CVSS " + args.version + " >= 9.0")
             result_dict[y]['crit'] = {'num': len(crits_of_year)}
-        elif args.cwe:
+        if args.cwe:
             cves_relatet_to_cwe, cwe_title = get_all_cwe_year(y, args.cwe)
             if args.v is not None:
                 for cve in cves_relatet_to_cwe:
@@ -209,9 +231,8 @@ if __name__ == '__main__':
     parser.add_argument('-V', '--version', help='version of CVSS', choices=['3_1', '3_0', '2_0'], default='3_1',required=False)
     parser.add_argument('-p', '--plot', help='plots data of CVEs', action='store_true')
     parser.add_argument('-v', help='--verbose', action='append_const', const = 1)
-    group1 = parser.add_mutually_exclusive_group()
-    group1.add_argument('-c', '--crit', help='search CVEs with CVSS >=9', action='store_true')
-    group1.add_argument('-C', '--cwe', help='Search for CWE categories')
+    parser.add_argument('-c', '--crit', help='search CVEs with CVSS >=9', action='store_true')
+    parser.add_argument('-C', '--cwe', help='Search for CWE categories')
     parser.add_argument('-y', '--year', help='the year you want to process. e.g.: 2022 or 2022-2023', required=True)
     args = parser.parse_args()
     
