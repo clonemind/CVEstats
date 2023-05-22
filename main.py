@@ -99,19 +99,21 @@ def parse_json_crits(filename, cvss_version):
                                 result['title'] = ""                
     return result
 
+# generates a list of cwes 
 def get_all_cwe_year(year, cwe):
     result = []
     cwe_title = None
     files_to_read = read_files_of_year(year)
     for file in files_to_read:
-        cve, cwe_description = parse_json_cwe(file, cwe)
-        if cve:
-            result.append(cve)
+        cve_id, cwe_description = parse_json_cwe(file, cwe)
+        if cve_id:
+            result.append(cve_id)
         if not cwe_title and cwe_description:
             cwe_title = cwe_description
     
     return result, cwe_title
-    
+
+# search the all CVEs which is related to the mentioned CWE
 def parse_json_cwe(filename, cwe):
     f = open(filename)
     j = json.load(f)
@@ -123,6 +125,27 @@ def parse_json_cwe(filename, cwe):
                     if cwe == description['cweId']:
                         return j['cveMetadata']['cveId'], description['description']
     return None, None
+
+# generate a list of all CVEs which the mentioned product
+def get_all_products_year(year, product):
+    result = []
+    files_to_read = read_files_of_year(year)
+    for file in files_to_read:
+        cve = parse_json_product(file, product)
+        if cve:
+            result.append(cve)
+
+    return result
+
+def parse_json_product(filename, product):
+    f = open(filename)
+    j = json.load(f)
+    if 'affected' in j['containers']['cna']:
+        affected_product = j['containers']['cna']['affected']
+        for product_data in affected_product:
+            if product.lower() == product_data['product'].lower():
+                return j['cveMetadata']['cveId']
+    return None
 
 def parse_year(year):
     result = []
@@ -140,6 +163,7 @@ def calc_plot_num(data, years):
     result = 0
     if 'crit' in data[years[0]]: result += 1
     if 'cwe' in data[years[0]]:result += 1
+    if 'product' in data[years[0]]:result += 1
     return result
 
 def plot_data(data, cvss_version):
@@ -148,16 +172,19 @@ def plot_data(data, cvss_version):
     median_list = []
     crit_list = []
     cwe_list = []
+    product_list = []
     
     # generate a list with all years that the user wants
     for years in keys:
         year_list.append(years)
+        
     # calculate a list to plot median
     for year in year_list:
         if data[year]['median'] is None:
             median_list.append(0)
         else:
             median_list.append(data[year]['median'])
+            
     # calculate the number of plots which have to be generated
     num_plots = calc_plot_num(data, year_list)
     figure, axis = plt.subplots(1, num_plots + 1)
@@ -167,7 +194,7 @@ def plot_data(data, cvss_version):
         for year in year_list:
             if data[year]['crit'] is not None:
                 crit_list.append(data[year]['crit']['num'])
-        
+
         # Plot crits       
         axis[num_plots].set_title("Critical vulns from " + str(year_list[0]) + " to " + str(year_list[-1]))
         axis[num_plots].plot(keys, crit_list)
@@ -179,11 +206,24 @@ def plot_data(data, cvss_version):
     if 'cwe' in data[year]:
         for year in year_list:
             if data[year]['cwe'] is not None:
-                cwe_list.append(data[year]['cwe']['num'])    
+                cwe_list.append(data[year]['cwe']['num'])
         
         # Plot CWE      
         axis[num_plots].set_title(data[year]['cwe']['title'] + " from " + str(year_list[0]) + " to " + str(year_list[-1]))
         axis[num_plots].plot(keys, cwe_list)
+        axis[num_plots].set(xlabel='years', ylabel='num assigned CWEs')
+        axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
+        axis[num_plots].set_ylim(bottom=0) # y min is always 0
+        num_plots -= 1
+    
+    if 'product' in data[year]:
+        for year in year_list:
+            if data[year]['product'] is not None:
+                product_list.append(data[year]['product']['num'])
+        
+        # Plot Product CVEs    
+        axis[num_plots].set_title(data[year]['product']['title'] + " vulns from " + str(year_list[0]) + " to " + str(year_list[-1]))
+        axis[num_plots].bar(keys, product_list)
         axis[num_plots].set(xlabel='years', ylabel='num assigned CWEs')
         axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
         axis[num_plots].set_ylim(bottom=0) # y min is always 0
@@ -211,6 +251,7 @@ def gui(args):
                     print(crit)
             print(str(y) + ": " + str(len(crits_of_year)) + " CVEs with CVSS " + args.version + " >= 9.0")
             result_dict[y]['crit'] = {'num': len(crits_of_year)}
+        
         if args.cwe:
             cves_relatet_to_cwe, cwe_title = get_all_cwe_year(y, args.cwe)
             if args.v is not None:
@@ -220,20 +261,31 @@ def gui(args):
             result_dict[y]['cwe'] = {}
             result_dict[y]['cwe']['title'] = args.cwe
             result_dict[y]['cwe']['num'] = len(cves_relatet_to_cwe)
+        
+        if args.product:
+            cves_relatet_to_product = get_all_products_year(y, args.product)
+            if args.v is not None:
+                for cve in cves_relatet_to_product:
+                    print(cve)
+            print(str(y) + ": " + "The product " + args.product + " has " + str(len(cves_relatet_to_product)) + " vulnerabilities assigned")
+            result_dict[y]['product'] = {}
+            result_dict[y]['product']['title'] = args.product
+            result_dict[y]['product']['num'] = len(cves_relatet_to_product)
 
     print(result_dict)
     
-    if args.plot:
+    if args.show:
         plot_data(result_dict, args.version)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Search a specific year of CVEs')
     parser.add_argument('-V', '--version', help='version of CVSS', choices=['3_1', '3_0', '2_0'], default='3_1',required=False)
-    parser.add_argument('-p', '--plot', help='plots data of CVEs', action='store_true')
+    parser.add_argument('-s', '--show', help='plots data of CVEs', action='store_true')
     parser.add_argument('-v', help='--verbose', action='append_const', const = 1)
-    parser.add_argument('-c', '--crit', help='search CVEs with CVSS >=9', action='store_true')
+    parser.add_argument('-c', '--crit', help='only search CVEs with CVSS >=9', action='store_true')
     parser.add_argument('-C', '--cwe', help='Search for CWE categories')
     parser.add_argument('-y', '--year', help='the year you want to process. e.g.: 2022 or 2022-2023', required=True)
+    parser.add_argument('-p', '--product', help='search for vulns of aspecific product ')
     args = parser.parse_args()
     
     gui(args)
