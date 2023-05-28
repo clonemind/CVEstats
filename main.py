@@ -33,16 +33,16 @@ def parse_json_base_score(filename, cvss_version):
     if 'metrics' in j['containers']['cna']:
         metrics = j['containers']['cna']['metrics']
         for metric in metrics:
-            match cvss_version:
-                case '3_1':
+            for version in cvss_version:
+                if version == '3_1':
                     if 'cvssV3_1' in metric:
                         result = result + float(metric['cvssV3_1']['baseScore'])
                         counter = counter + 1
-                case '3_0':
+                elif version == '3_0':
                     if 'cvssV3_0' in metric:
                         result = result + float(metric['cvssV3_0']['baseScore'])
                         counter = counter + 1
-                case '2_0':
+                elif version == '2_0':
                     if 'cvssV2_0' in metric:
                         result = result + float(metric['cvssV2_0']['baseScore'])
                         counter = counter + 1
@@ -69,8 +69,8 @@ def parse_json_crits(filename, cvss_version):
     if 'metrics' in j['containers']['cna']:
         metrics = j['containers']['cna']['metrics']
         for metric in metrics:
-            match cvss_version:
-                case '3_1':
+            for version in cvss_version:
+                if version == '3_1':
                     if 'cvssV3_1' in metric:
                         if 9.0 <= float(metric['cvssV3_1']['baseScore']):
                             result['id'] = j['cveMetadata']['cveId']
@@ -79,7 +79,7 @@ def parse_json_crits(filename, cvss_version):
                                 result['title'] = j['containers']['cna']['title']
                             else: 
                                 result['title'] = ""
-                case '3_0':
+                elif version == '3_0':
                     if 'cvssV3_0' in metric:
                         if 9.0 <= float(metric['cvssV3_0']['baseScore']):
                             result['id'] = j['cveMetadata']['cveId']
@@ -88,7 +88,7 @@ def parse_json_crits(filename, cvss_version):
                                 result['title'] = j['containers']['cna']['title']
                             else: 
                                 result['title'] = ""
-                case '2_0':
+                elif version == '2_0':
                     if 'cvssV2_0' in metric:
                         if 9.0 <= float(metric['cvssV2_0']['baseScore']):
                             result['id'] = j['cveMetadata']['cveId']
@@ -230,7 +230,7 @@ def plot_data(data, cvss_version):
         num_plots -= 1
             
     # Plot median        
-    axis[num_plots].set_title('CVSS ' + cvss_version + " >= 9,0 from " + str(year_list[0]) + " to " + str(year_list[-1]))
+    axis[num_plots].set_title('CVSS ' + str(cvss_version) + " >= 9,0 from " + str(year_list[0]) + " to " + str(year_list[-1]))
     axis[num_plots].bar(keys, median_list)
     axis[num_plots].set(xlabel='years', ylabel='CVSS')
     axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
@@ -249,7 +249,7 @@ def gui(args):
             if args.v is not None:
                 for crit in crits_of_year:
                     print(crit)
-            print(str(y) + ": " + str(len(crits_of_year)) + " CVEs with CVSS " + args.version + " >= 9.0")
+            print(str(y) + ": " + str(len(crits_of_year)) + " CVEs with CVSS " + str(args.version) + " >= 9.0")
             result_dict[y]['crit'] = {'num': len(crits_of_year)}
         
         if args.cwe:
@@ -279,7 +279,7 @@ def gui(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Search a specific year of CVEs')
-    parser.add_argument('-V', '--version', help='version of CVSS', choices=['3_1', '3_0', '2_0'], default='3_1',required=False)
+    parser.add_argument('-V', '--version', help='version of CVSS', nargs='*', default='3_1',required=False)
     parser.add_argument('-s', '--show', help='plots data of CVEs', action='store_true')
     parser.add_argument('-v', help='--verbose', action='append_const', const = 1)
     parser.add_argument('-c', '--crit', help='only search CVEs with CVSS >=9', action='store_true')
