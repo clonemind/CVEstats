@@ -126,7 +126,7 @@ def parse_json_cwe(filename, cwe):
                         return j['cveMetadata']['cveId'], description['description']
     return None, None
 
-# generate a list of all CVEs which the mentioned product
+# generate a list of all CVEs with the mentioned product
 def get_all_products_year(year, product):
     result = []
     files_to_read = read_files_of_year(year)
@@ -143,7 +143,28 @@ def parse_json_product(filename, product):
     if 'affected' in j['containers']['cna']:
         affected_product = j['containers']['cna']['affected']
         for product_data in affected_product:
-            if product.lower() == product_data['product'].lower():
+            if product.lower() in product_data['product'].lower():
+                return j['cveMetadata']['cveId']
+    return None
+
+# generate a list of all CVEs with the mentioned vendor
+def get_all_vendors_year(year, vendor):
+    result = []
+    files_to_read = read_files_of_year(year)
+    for file in files_to_read:
+        cve = parse_json_vendor(file, vendor)
+        if cve:
+            result.append(cve)
+
+    return result
+
+def parse_json_vendor(filename, vendor):
+    f = open(filename)
+    j = json.load(f)
+    if 'affected' in j['containers']['cna']:
+        affected_vendor = j['containers']['cna']['affected']
+        for vendor_data in affected_vendor:
+            if vendor.lower() in vendor_data['vendor'].lower():
                 return j['cveMetadata']['cveId']
     return None
 
@@ -164,6 +185,7 @@ def calc_plot_num(data, years):
     if 'crit' in data[years[0]]: result += 1
     if 'cwe' in data[years[0]]:result += 1
     if 'product' in data[years[0]]:result += 1
+    if 'vendor' in data[years[0]]:result += 1
     return result
 
 def plot_data(data, cvss_version):
@@ -173,6 +195,7 @@ def plot_data(data, cvss_version):
     crit_list = []
     cwe_list = []
     product_list = []
+    vendor_list = []
     
     # generate a list with all years that the user wants
     for years in keys:
@@ -224,7 +247,20 @@ def plot_data(data, cvss_version):
         # Plot Product CVEs    
         axis[num_plots].set_title(data[year]['product']['title'] + " vulns from " + str(year_list[0]) + " to " + str(year_list[-1]))
         axis[num_plots].bar(keys, product_list)
-        axis[num_plots].set(xlabel='years', ylabel='num assigned CWEs')
+        axis[num_plots].set(xlabel='years', ylabel='num of vulns')
+        axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
+        axis[num_plots].set_ylim(bottom=0) # y min is always 0
+        num_plots -= 1
+        
+    if 'vendor' in data[year]:
+        for year in year_list:
+            if data[year]['vendor'] is not None:
+                vendor_list.append(data[year]['vendor']['num'])
+        
+        # Plot vendor CVEs    
+        axis[num_plots].set_title(data[year]['vendor']['title'] + " vulns from " + str(year_list[0]) + " to " + str(year_list[-1]))
+        axis[num_plots].bar(keys, vendor_list)
+        axis[num_plots].set(xlabel='years', ylabel='num of vulns')
         axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
         axis[num_plots].set_ylim(bottom=0) # y min is always 0
         num_plots -= 1
@@ -256,7 +292,7 @@ def gui(args):
             cves_relatet_to_cwe, cwe_title = get_all_cwe_year(y, args.cwe)
             if args.v is not None:
                 for cve in cves_relatet_to_cwe:
-                    print(cve)
+                    print(args.cwe + ": " + cve)
             print(str(y) + ": " + str(len(cves_relatet_to_cwe)) + " vulnerabilities have " + args.cwe + '(' + str(cwe_title) + ')' + " assigned")
             result_dict[y]['cwe'] = {}
             result_dict[y]['cwe']['title'] = args.cwe
@@ -266,11 +302,21 @@ def gui(args):
             cves_relatet_to_product = get_all_products_year(y, args.product)
             if args.v is not None:
                 for cve in cves_relatet_to_product:
-                    print(cve)
+                    print(args.product + ": " + cve)
             print(str(y) + ": " + "The product " + args.product + " has " + str(len(cves_relatet_to_product)) + " vulnerabilities assigned")
             result_dict[y]['product'] = {}
             result_dict[y]['product']['title'] = args.product
             result_dict[y]['product']['num'] = len(cves_relatet_to_product)
+        
+        if args.vendor:
+            cves_relatet_to_vendor = get_all_vendors_year(y, args.vendor)
+            if args.v is not None:
+                for cve in cves_relatet_to_vendor:
+                    print(args.vendor + ": " + cve)
+            print(str(y) + ": " + "The vendor " + args.vendor + " has " + str(len(cves_relatet_to_vendor)) + " vulnerabilities assigned")
+            result_dict[y]['vendor'] = {}
+            result_dict[y]['vendor']['title'] = args.vendor
+            result_dict[y]['vendor']['num'] = len(cves_relatet_to_vendor)
 
     print(result_dict)
     
@@ -278,14 +324,15 @@ def gui(args):
         plot_data(result_dict, args.version)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Search a specific year of CVEs')
-    parser.add_argument('-V', '--version', help='version of CVSS', nargs='*', default='3_1',required=False)
+    parser = argparse.ArgumentParser(description='search a specific year of CVEs')
+    parser.add_argument('-V', '--version', help='version of CVSS: 3_1, 3_0, 2_0', nargs='*', default='3_1',required=True)
     parser.add_argument('-s', '--show', help='plots data of CVEs', action='store_true')
     parser.add_argument('-v', help='--verbose', action='append_const', const = 1)
     parser.add_argument('-c', '--crit', help='only search CVEs with CVSS >=9', action='store_true')
-    parser.add_argument('-C', '--cwe', help='Search for CWE categories')
+    parser.add_argument('-C', '--cwe', help='Search CVEs with CWE categories')
     parser.add_argument('-y', '--year', help='the year you want to process. e.g.: 2022 or 2022-2023', required=True)
-    parser.add_argument('-p', '--product', help='search for vulns of aspecific product ')
+    parser.add_argument('-p', '--product', help='search for vulns of a specific product')
+    parser.add_argument('-r', '--vendor', help='search for vulns of a specific vendor')
     args = parser.parse_args()
     
     gui(args)
