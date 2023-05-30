@@ -326,13 +326,13 @@ def gui(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='search a specific year of CVEs')
     parser.add_argument('-V', '--version', help='version of CVSS: 3_1, 3_0, 2_0', nargs='*', default='3_1',required=True)
-    parser.add_argument('-s', '--show', help='plots data of CVEs', action='store_true')
     parser.add_argument('-v', help='--verbose', action='append_const', const = 1)
+    parser.add_argument('-y', '--year', help='the year you want to process. e.g.: 2022 or 2022-2023', required=True)
     parser.add_argument('-c', '--crit', help='only search CVEs with CVSS >=9', action='store_true')
     parser.add_argument('-C', '--cwe', help='Search CVEs with CWE categories')
-    parser.add_argument('-y', '--year', help='the year you want to process. e.g.: 2022 or 2022-2023', required=True)
     parser.add_argument('-p', '--product', help='search for vulns of a specific product')
     parser.add_argument('-r', '--vendor', help='search for vulns of a specific vendor')
+    parser.add_argument('-s', '--show', help='plots data of CVEs', action='store_true')
     args = parser.parse_args()
     
     gui(args)
