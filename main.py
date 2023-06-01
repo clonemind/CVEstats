@@ -1,22 +1,26 @@
 import json
 import os
+from pathlib import Path
 import argparse
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
+files_to_read = []
+
+def open_file(filename):
+    return open(filename, encoding='utf-8')
+    
 def read_files_of_year(year):
-    result = []
-    path = './cves/' + str(year)
+    global files_to_read
+    files_to_read = []
+    path = Path(os.getcwd() + '/cves/' + str(year))
     for root, dirs, files in os.walk(path):
         for file in files:
-            result.append(os.path.join(root, file))
-            
-    return result
+            files_to_read.append(os.path.join(root, file))
 
 def calc_median_year(year, cvss_version):
     counter = 0
     median_base_score = 0
-    files_to_read = read_files_of_year(year)
     for file in files_to_read:
         base_score = parse_json_base_score(file, cvss_version)
         if base_score:
@@ -28,7 +32,7 @@ def calc_median_year(year, cvss_version):
 def parse_json_base_score(filename, cvss_version):
     counter = 0
     result = 0
-    f = open(filename)
+    f = open_file(filename)
     j = json.load(f)
     if 'metrics' in j['containers']['cna']:
         metrics = j['containers']['cna']['metrics']
@@ -54,7 +58,6 @@ def parse_json_base_score(filename, cvss_version):
 
 def get_all_crits_year(year, cvss_version):
     result = []
-    files_to_read = read_files_of_year(year)
     for file in files_to_read:
         crit = parse_json_crits(file, cvss_version)
         if crit:
@@ -64,7 +67,7 @@ def get_all_crits_year(year, cvss_version):
 
 def parse_json_crits(filename, cvss_version):
     result = {}
-    f = open(filename)
+    f = open_file(filename)
     j = json.load(f)
     if 'metrics' in j['containers']['cna']:
         metrics = j['containers']['cna']['metrics']
@@ -103,7 +106,6 @@ def parse_json_crits(filename, cvss_version):
 def get_all_cwe_year(year, cwe):
     result = []
     cwe_title = None
-    files_to_read = read_files_of_year(year)
     for file in files_to_read:
         cve_id, cwe_description = parse_json_cwe(file, cwe)
         if cve_id:
@@ -115,7 +117,7 @@ def get_all_cwe_year(year, cwe):
 
 # search the all CVEs which is related to the mentioned CWE
 def parse_json_cwe(filename, cwe):
-    f = open(filename)
+    f = open_file(filename)
     j = json.load(f)
     if 'problemTypes' in j['containers']['cna']:
         problems = j['containers']['cna']['problemTypes']
@@ -129,7 +131,6 @@ def parse_json_cwe(filename, cwe):
 # generate a list of all CVEs with the mentioned product
 def get_all_products_year(year, product):
     result = []
-    files_to_read = read_files_of_year(year)
     for file in files_to_read:
         cve = parse_json_product(file, product)
         if cve:
@@ -138,7 +139,7 @@ def get_all_products_year(year, product):
     return result
 
 def parse_json_product(filename, product):
-    f = open(filename)
+    f = open_file(filename)
     j = json.load(f)
     if 'affected' in j['containers']['cna']:
         affected_product = j['containers']['cna']['affected']
@@ -150,7 +151,6 @@ def parse_json_product(filename, product):
 # generate a list of all CVEs with the mentioned vendor
 def get_all_vendors_year(year, vendor):
     result = []
-    files_to_read = read_files_of_year(year)
     for file in files_to_read:
         cve = parse_json_vendor(file, vendor)
         if cve:
@@ -159,7 +159,7 @@ def get_all_vendors_year(year, vendor):
     return result
 
 def parse_json_vendor(filename, vendor):
-    f = open(filename)
+    f = open_file(filename)
     j = json.load(f)
     if 'affected' in j['containers']['cna']:
         affected_vendor = j['containers']['cna']['affected']
@@ -167,6 +167,21 @@ def parse_json_vendor(filename, vendor):
             if vendor.lower() in vendor_data['vendor'].lower():
                 return j['cveMetadata']['cveId']
     return None
+
+def get_all_rejected_year(year):
+    result = []
+    for file in files_to_read:
+        rejected = parse_json_rejected(file)
+        result.append(rejected)
+    
+    return result
+
+def parse_json_rejected(filename):
+    f = open_file(filename)
+    j = json.load(f)
+    if 'cveMetadata' in j:
+        if "rejected" == (j['cveMetadata']['state']).lower():
+            return j['cveMetadata']['cveId']
 
 def parse_year(year):
     result = []
@@ -186,6 +201,7 @@ def calc_plot_num(data, years):
     if 'cwe' in data[years[0]]:result += 1
     if 'product' in data[years[0]]:result += 1
     if 'vendor' in data[years[0]]:result += 1
+    if 'rejected' in data[years[0]]:result += 1
     return result
 
 def plot_data(data, cvss_version):
@@ -196,6 +212,7 @@ def plot_data(data, cvss_version):
     cwe_list = []
     product_list = []
     vendor_list = []
+    rejected_list = []
     
     # generate a list with all years that the user wants
     for years in keys:
@@ -220,10 +237,12 @@ def plot_data(data, cvss_version):
 
         # Plot crits       
         axis[num_plots].set_title("Critical vulns from " + str(year_list[0]) + " to " + str(year_list[-1]))
-        axis[num_plots].plot(keys, crit_list)
+        bars = axis[num_plots].bar(keys, crit_list)
         axis[num_plots].set(xlabel='years', ylabel='num crits')
         axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
         axis[num_plots].set_ylim(bottom=0) # y min is always 0
+        axis[num_plots].set_xticks(year_list, year_list, rotation=90)
+        axis[num_plots].bar_label(bars)
         num_plots -= 1
     
     if 'cwe' in data[year]:
@@ -233,10 +252,12 @@ def plot_data(data, cvss_version):
         
         # Plot CWE      
         axis[num_plots].set_title(data[year]['cwe']['title'] + " from " + str(year_list[0]) + " to " + str(year_list[-1]))
-        axis[num_plots].plot(keys, cwe_list)
+        bars = axis[num_plots].bar(keys, cwe_list)
         axis[num_plots].set(xlabel='years', ylabel='num assigned CWEs')
         axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
         axis[num_plots].set_ylim(bottom=0) # y min is always 0
+        axis[num_plots].set_xticks(year_list, year_list)
+        axis[num_plots].bar_label(bars)
         num_plots -= 1
     
     if 'product' in data[year]:
@@ -246,10 +267,12 @@ def plot_data(data, cvss_version):
         
         # Plot Product CVEs    
         axis[num_plots].set_title(data[year]['product']['title'] + " vulns from " + str(year_list[0]) + " to " + str(year_list[-1]))
-        axis[num_plots].bar(keys, product_list)
+        bars = axis[num_plots].bar(keys, product_list)
         axis[num_plots].set(xlabel='years', ylabel='num of vulns')
         axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
         axis[num_plots].set_ylim(bottom=0) # y min is always 0
+        axis[num_plots].set_xticks(year_list, year_list)
+        axis[num_plots].bar_label(bars)
         num_plots -= 1
         
     if 'vendor' in data[year]:
@@ -259,25 +282,45 @@ def plot_data(data, cvss_version):
         
         # Plot vendor CVEs    
         axis[num_plots].set_title(data[year]['vendor']['title'] + " vulns from " + str(year_list[0]) + " to " + str(year_list[-1]))
-        axis[num_plots].bar(keys, vendor_list)
+        bars = axis[num_plots].bar(keys, vendor_list)
         axis[num_plots].set(xlabel='years', ylabel='num of vulns')
         axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
         axis[num_plots].set_ylim(bottom=0) # y min is always 0
+        axis[num_plots].set_xticks(year_list, year_list)
+        axis[num_plots].bar_label(bars)
         num_plots -= 1
             
+    if 'rejected' in data[year]:
+        for year in year_list:
+            if data[year]['rejected'] is not None:
+                rejected_list.append(data[year]['rejected']['num'])
+        
+        # Plot vendor CVEs    
+        axis[num_plots].set_title(str(data[year]['rejected']['num']) + " CVEs rejected ")
+        bars = axis[num_plots].bar(keys, rejected_list)
+        axis[num_plots].set(xlabel='years', ylabel='num of rejected')
+        axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
+        axis[num_plots].set_ylim(bottom=0) # y min is always 0
+        axis[num_plots].set_xticks(year_list, year_list)
+        axis[num_plots].bar_label(bars)
+        num_plots -= 1
+        
     # Plot median        
     axis[num_plots].set_title('CVSS ' + str(cvss_version) + " >= 9,0 from " + str(year_list[0]) + " to " + str(year_list[-1]))
-    axis[num_plots].bar(keys, median_list)
+    bars = axis[num_plots].bar(keys, median_list)
     axis[num_plots].set(xlabel='years', ylabel='CVSS')
     axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
-    axis[num_plots].set_ylim(bottom=0) # y min is always 0
-
+    #axis[num_plots].set_ylim(bottom=0) # y min is always 0
+    axis[num_plots].set_xticks(year_list, year_list)
+    axis[num_plots].bar_label(bars)
+        
     plt.show()
 
 def gui(args):
     result_dict = {}
     years = parse_year(args.year)
     for y in years:
+        read_files_of_year(y)
         result_dict[y] = {}
         result_dict[y]['median'] = calc_median_year(y, args.version)
         if args.crit:
@@ -318,6 +361,14 @@ def gui(args):
             result_dict[y]['vendor']['title'] = args.vendor
             result_dict[y]['vendor']['num'] = len(cves_relatet_to_vendor)
 
+        if args.rejected:
+            rejected_cves = get_all_rejected_year(y)
+            if args.v is not None:
+                for cve in rejected_cves:
+                    print("REJECTED: " + cve)
+            print(str(y) + ": " + str(len(rejected_cves)) + " rejected CVEs")
+            result_dict[y]['rejected'] = {'num': len(rejected_cves)}
+            
     print(result_dict)
     
     if args.show:
@@ -327,12 +378,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='search a specific year of CVEs')
     parser.add_argument('-V', '--version', help='version of CVSS: 3_1, 3_0, 2_0', nargs='*', default='3_1',required=True)
     parser.add_argument('-v', help='--verbose', action='append_const', const = 1)
-    parser.add_argument('-y', '--year', help='the year you want to process. e.g.: 2022 or 2022-2023', required=True)
-    parser.add_argument('-c', '--crit', help='only search CVEs with CVSS >=9', action='store_true')
-    parser.add_argument('-C', '--cwe', help='Search CVEs with CWE categories')
-    parser.add_argument('-p', '--product', help='search for vulns of a specific product')
-    parser.add_argument('-r', '--vendor', help='search for vulns of a specific vendor')
+    parser.add_argument('--year', help='the year you want to process. e.g.: 2022 or 2022-2023', required=True)
+    parser.add_argument('--crit', help='only search CVEs with CVSS >=9', action='store_true')
+    parser.add_argument('--cwe', help='Search CVEs with CWE categories')
+    parser.add_argument('--product', help='search for vulns of a specific product')
+    parser.add_argument('--vendor', help='search for vulns of a specific vendor')
+    parser.add_argument('--rejected', help='search rejected CVE IDs', action='store_true')
+    parser.add_argument('--credits', help='search credits to researchers', action='store_true')
     parser.add_argument('-s', '--show', help='plots data of CVEs', action='store_true')
+
     args = parser.parse_args()
     
     gui(args)
