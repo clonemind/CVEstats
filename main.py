@@ -183,6 +183,28 @@ def parse_json_rejected(filename):
         if "rejected" == (j['cveMetadata']['state']).lower():
             return j['cveMetadata']['cveId']
 
+def get_all_credits_year(year):
+    result = {}
+    for file in files_to_read:
+        credits = parse_json_credits(file)
+        for credit in credits:
+            if credit in result:
+                result[credit] += 1
+            elif credit not in result:
+                result[credit] = 1
+    return result
+
+def parse_json_credits(filename):
+    result = []
+    f = open_file(filename)
+    j = json.load(f)
+    if 'credits' in j['containers']['cna']:
+        credits = j['containers']['cna']['credits']
+        for credit in credits:
+            #print(credit['value'])
+            result.append(credit['value'])
+    return result
+
 def parse_year(year):
     result = []
     if '-' in year:
@@ -202,6 +224,7 @@ def calc_plot_num(data, years):
     if 'product' in data[years[0]]:result += 1
     if 'vendor' in data[years[0]]:result += 1
     if 'rejected' in data[years[0]]:result += 1
+    if 'credits' in data[years[0]]:result += 1
     return result
 
 def plot_data(data, cvss_version):
@@ -213,6 +236,7 @@ def plot_data(data, cvss_version):
     product_list = []
     vendor_list = []
     rejected_list = []
+    credits_list = []   
     
     # generate a list with all years that the user wants
     for years in keys:
@@ -296,9 +320,24 @@ def plot_data(data, cvss_version):
                 rejected_list.append(data[year]['rejected']['num'])
         
         # Plot vendor CVEs    
-        axis[num_plots].set_title(str(data[year]['rejected']['num']) + " CVEs rejected ")
+        axis[num_plots].set_title("rejected CVEs")
         bars = axis[num_plots].bar(keys, rejected_list)
         axis[num_plots].set(xlabel='years', ylabel='num of rejected')
+        axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
+        axis[num_plots].set_ylim(bottom=0) # y min is always 0
+        axis[num_plots].set_xticks(year_list, year_list)
+        axis[num_plots].bar_label(bars)
+        num_plots -= 1
+        
+    if 'credits' in data[year]:
+        for year in year_list:
+            if data[year]['credits'] is not None:
+                rejected_list.append(data[year]['credits']['num'])
+        
+        # Plot vendor CVEs    
+        axis[num_plots].set_title("CVEs with credits")
+        bars = axis[num_plots].bar(keys, rejected_list)
+        axis[num_plots].set(xlabel='years', ylabel='num of credits')
         axis[num_plots].yaxis.set_major_locator(MaxNLocator(integer=True)) # set x axis to integers
         axis[num_plots].set_ylim(bottom=0) # y min is always 0
         axis[num_plots].set_xticks(year_list, year_list)
@@ -368,6 +407,24 @@ def gui(args):
                     print("REJECTED: " + cve)
             print(str(y) + ": " + str(len(rejected_cves)) + " rejected CVEs")
             result_dict[y]['rejected'] = {'num': len(rejected_cves)}
+            
+        if args.credits:
+            credits_cves = get_all_credits_year(y)
+            num_credits = 0
+            sorted_credits = dict(sorted(credits_cves.items(), key=lambda item: item[1], reverse=True))
+            list_of_credits = list(sorted_credits.items())
+            if args.v is not None:
+                print("\nTop ten credits earner:")
+                for i in range(0, 10):
+                    try:
+                        print(str(i + 1) + ". " + str(list_of_credits[i][0]) + " : " + str(list_of_credits[i][1]))
+                    except:
+                        pass
+            
+            for l in list_of_credits:
+                num_credits += l[1]
+            print(str(y) + ": " + str(num_credits) + " credits in CVEs")
+            result_dict[y]['credits'] = {'num': str(num_credits)}
             
     print(result_dict)
     
